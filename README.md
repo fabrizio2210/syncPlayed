@@ -96,4 +96,3 @@ Notes:
 
 - The cron job inside the container runs the helper `run-sync.sh`, which reads environment variables and invokes the `syncplayed` binary.
 - Keep your tokens secret: in production, use a secret manager or Docker secrets instead of embedding tokens in the compose file.
-
