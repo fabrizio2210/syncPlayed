@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+
+# Run the sync once a day at 03:30. The job's stdout/stderr will be attached to the container stdout.
+30 3 * * * root /usr/local/bin/run-sync.sh

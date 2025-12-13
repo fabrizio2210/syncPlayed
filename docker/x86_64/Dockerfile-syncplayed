@@ -1,0 +1,33 @@
+# Multi-stage build: build Go binary, then run with cron in Debian
+FROM golang:1.20 AS builder
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -o /syncplayed
+
+FROM debian:11
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cron \
+    ca-certificates \
+    ca-certificates-java \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary and helper scripts
+COPY --from=builder /syncplayed /usr/local/bin/syncplayed
+COPY docker/run-sync.sh /usr/local/bin/run-sync.sh
+COPY docker/syncplayed.cron /etc/cron.d/syncplayed
+
+RUN chmod +x /usr/local/bin/syncplayed /usr/local/bin/run-sync.sh
+RUN chmod 0644 /etc/cron.d/syncplayed
+RUN crontab /etc/cron.d/syncplayed || true
+
+ENV A_HOST="" \
+    A_USER="" \
+    A_TOKEN="" \
+    B_HOST="" \
+    B_USER="" \
+    B_TOKEN="" \
+    DRY_RUN="true"
+
+# The cron daemon runs in foreground; jobs' stdout/stderr will flow to container stdout
+CMD ["/usr/sbin/cron","-f"]
