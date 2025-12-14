@@ -216,6 +216,7 @@ func main() {
 	var aHost, aUser, aToken string
 	var bHost, bUser, bToken string
 	var dryRun bool
+	var intervalStr string
 
 	flag.StringVar(&aHost, "a-host", "", "Host for server A (e.g. jellyfin.no-ip.dynu.net or https://...)")
 	flag.StringVar(&aUser, "a-user", "", "User ID on server A")
@@ -224,36 +225,88 @@ func main() {
 	flag.StringVar(&bUser, "b-user", "", "User ID on server B")
 	flag.StringVar(&bToken, "b-token", "", "API token for server B")
 	flag.BoolVar(&dryRun, "dry-run", true, "If true, do not actually mark items; only print actions")
+	flag.StringVar(&intervalStr, "interval", "", "Interval between runs (e.g. 24h). If empty, INTERVAL env or default 24h is used")
 	flag.Parse()
 
+	// Allow environment variables to supply credentials when flags are not provided
+	if aHost == "" {
+		aHost = os.Getenv("A_HOST")
+	}
+	if aUser == "" {
+		aUser = os.Getenv("A_USER")
+	}
+	if aToken == "" {
+		aToken = os.Getenv("A_TOKEN")
+	}
+	if bHost == "" {
+		bHost = os.Getenv("B_HOST")
+	}
+	if bUser == "" {
+		bUser = os.Getenv("B_USER")
+	}
+	if bToken == "" {
+		bToken = os.Getenv("B_TOKEN")
+	}
+
+	// Allow env to override dry-run flag
+	if v := os.Getenv("DRY_RUN"); v != "" {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "0" || v == "false" || v == "no" {
+			dryRun = false
+		} else {
+			dryRun = true
+		}
+	}
+
 	if aHost == "" || aUser == "" || aToken == "" || bHost == "" || bUser == "" || bToken == "" {
-		fmt.Fprintln(os.Stderr, "Missing required flags. See -help for usage.")
+		fmt.Fprintln(os.Stderr, "Missing required configuration. Provide flags or environment variables (A_HOST,A_USER,A_TOKEN,B_HOST,B_USER,B_TOKEN). See -help for usage.")
 		flag.Usage()
 		os.Exit(2)
+	}
+
+	// Determine interval: flag -> env INTERVAL -> default 24h
+	if intervalStr == "" {
+		intervalStr = os.Getenv("INTERVAL")
+	}
+	if intervalStr == "" {
+		intervalStr = "24h"
+	}
+	dur, err := time.ParseDuration(intervalStr)
+	if err != nil || dur < 0 {
+		fmt.Fprintf(os.Stderr, "invalid interval '%s', using 24h\n", intervalStr)
+		dur = 24 * time.Hour
 	}
 
 	a := ServerConfig{Host: aHost, UserID: aUser, Token: aToken}
 	b := ServerConfig{Host: bHost, UserID: bUser, Token: bToken}
 
-	fmt.Println("Starting sync (dry-run:", dryRun, ")")
+	fmt.Println("Starting sync loop (dry-run:", dryRun, ", interval:", dur.String(), ")")
 
-	// A -> B
-	fmt.Printf("Syncing played from %s -> %s\n", a.Host, b.Host)
-	n1, err := syncDirection(a, b, dryRun)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error syncing A->B: %v\n", err)
-	}
+	for {
+		// A -> B
+		fmt.Printf("Syncing played from %s -> %s\n", a.Host, b.Host)
+		n1, err := syncDirection(a, b, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error syncing A->B: %v\n", err)
+		}
 
-	// B -> A
-	fmt.Printf("Syncing played from %s -> %s\n", b.Host, a.Host)
-	n2, err := syncDirection(b, a, dryRun)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error syncing B->A: %v\n", err)
-	}
+		// B -> A
+		fmt.Printf("Syncing played from %s -> %s\n", b.Host, a.Host)
+		n2, err := syncDirection(b, a, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error syncing B->A: %v\n", err)
+		}
 
-	if n1 == 0 && n2 == 0 {
-		fmt.Println("No items to mark.")
-	} else {
-		fmt.Printf("Done. Marked %d items A->B and %d items B->A (dry-run=%v)\n", n1, n2, dryRun)
+		if n1 == 0 && n2 == 0 {
+			fmt.Println("No items to mark.")
+		} else {
+			fmt.Printf("Done. Marked %d items A->B and %d items B->A (dry-run=%v)\n", n1, n2, dryRun)
+		}
+
+		if dur <= 0 {
+			break
+		}
+		fmt.Printf("Sleeping for %s\n", dur)
+		time.Sleep(dur)
 	}
 }

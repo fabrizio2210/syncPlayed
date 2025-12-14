@@ -57,10 +57,11 @@ docker run -d --name syncplayed \
   -e A_HOST=HOST1 -e A_USER=5bb0f7e0c68448649c8e01bf2eb130d7 -e A_TOKEN=TOKEN_A_USER \
   -e B_HOST=HOST2 -e B_USER=12a69eaf3c544382ad4e6bc24830b8ed -e B_TOKEN=TOKEN_B_USER \
   -e DRY_RUN=true \
+  -e INTERVAL=24h \
   fabrizio2210/syncplayed:x86_64
 ```
 
-The container runs a cron daemon and executes the sync once a day (configured in `docker/syncplayed.cron`). Job stdout/stderr are written to the container's stdout and can be collected by your Docker logging driver (e.g., Docker Swarm, journald, or a log collector).
+The container runs the `syncplayed` binary directly. The binary executes the sync immediately at container start and then sleeps for the configured interval before running again (default `24h`). Job stdout/stderr are written to the container's stdout and can be collected by your Docker logging driver (e.g., Docker Swarm, journald, or a log collector).
 
 CI/CD
 
@@ -94,5 +95,6 @@ services:
 
 Notes:
 
-- The cron job inside the container runs the helper `run-sync.sh`, which reads environment variables and invokes the `syncplayed` binary.
+- The binary reads configuration first from command-line flags and — if not provided — from environment variables: `A_HOST`, `A_USER`, `A_TOKEN`, `B_HOST`, `B_USER`, `B_TOKEN`, `DRY_RUN`, and `INTERVAL`.
+- Default interval is `24h`. You can change it by setting `INTERVAL` env (e.g. `-e INTERVAL=6h`) or by passing `-interval` when starting the binary directly.
 - Keep your tokens secret: in production, use a secret manager or Docker secrets instead of embedding tokens in the compose file.
